@@ -12,7 +12,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-import plotly.io as pio
 
 # Configuración de la página
 st.set_page_config(
@@ -205,8 +204,8 @@ def crear_grafica_co2(datos, invernadero_nombre):
     
     return fig
 
-# Función para generar PDF
-def generar_pdf(invernadero_nombre, datos, climograma_fig, co2_fig):
+# Función para generar PDF (versión simplificada sin imágenes de gráficas)
+def generar_pdf(invernadero_nombre, datos):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     elementos = []
@@ -272,25 +271,39 @@ def generar_pdf(invernadero_nombre, datos, climograma_fig, co2_fig):
         elementos.append(Paragraph("<b>Resumen Estadístico</b>", estilos['Heading2']))
         elementos.append(Spacer(1, 0.1*inch))
         elementos.append(tabla_resumen)
-        elementos.append(PageBreak())
+        elementos.append(Spacer(1, 0.3*inch))
         
-        # Guardar gráficas como imágenes
-        if climograma_fig:
-            img_bytes = pio.to_image(climograma_fig, format='png', width=800, height=500)
-            img_buffer = BytesIO(img_bytes)
-            img = Image(img_buffer, width=6*inch, height=3.75*inch)
-            elementos.append(Paragraph("<b>Climograma</b>", estilos['Heading2']))
-            elementos.append(Spacer(1, 0.1*inch))
-            elementos.append(img)
-            elementos.append(PageBreak())
+        # Tabla de datos detallados
+        elementos.append(Paragraph("<b>Datos Diarios</b>", estilos['Heading2']))
+        elementos.append(Spacer(1, 0.1*inch))
         
-        if co2_fig:
-            img_bytes = pio.to_image(co2_fig, format='png', width=800, height=400)
-            img_buffer = BytesIO(img_bytes)
-            img = Image(img_buffer, width=6*inch, height=3*inch)
-            elementos.append(Paragraph("<b>Concentración de CO₂</b>", estilos['Heading2']))
-            elementos.append(Spacer(1, 0.1*inch))
-            elementos.append(img)
+        # Preparar datos para la tabla
+        tabla_datos = [['Fecha', 'Temp (°C)', 'HR (%)', 'CO₂ (ppm)']]
+        for _, row in datos.iterrows():
+            tabla_datos.append([
+                row['fecha'].strftime('%d/%m/%Y'),
+                f"{row['temp_promedio']:.1f}",
+                f"{row['hr_promedio']:.1f}",
+                f"{row['co2']:.0f}"
+            ])
+        
+        tabla = Table(tabla_datos, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+        tabla.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2E7D32')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.beige, colors.lightgrey])
+        ]))
+        
+        elementos.append(tabla)
+        elementos.append(Spacer(1, 0.2*inch))
+        elementos.append(Paragraph("<i>Nota: Las gráficas pueden verse en la aplicación web.</i>", estilos['Normal']))
+        
     else:
         elementos.append(Paragraph("No hay datos disponibles para este invernadero.", estilos['Normal']))
     
@@ -511,12 +524,16 @@ elif opcion == "📥 Exportar Datos":
             st.write(f"**Total de días registrados:** {len(datos_prom)}")
             st.write(f"**Período:** {datos_prom['fecha'].min().strftime('%d/%m/%Y')} - {datos_prom['fecha'].max().strftime('%d/%m/%Y')}")
             
+            # Mostrar vista previa de las gráficas
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Temp. Promedio", f"{datos_prom['temp_promedio'].mean():.1f} °C")
+            with col2:
+                st.metric("HR Promedio", f"{datos_prom['hr_promedio'].mean():.1f} %")
+            
             if st.button("📄 Generar PDF", type="primary", use_container_width=True):
                 with st.spinner("Generando PDF..."):
-                    fig_clima = crear_climograma(datos_prom, invernadero_exp)
-                    fig_co2 = crear_grafica_co2(datos_prom, invernadero_exp)
-                    
-                    pdf_buffer = generar_pdf(invernadero_exp, datos_prom, fig_clima, fig_co2)
+                    pdf_buffer = generar_pdf(invernadero_exp, datos_prom)
                     
                     st.download_button(
                         label="⬇️ Descargar PDF",
@@ -527,6 +544,7 @@ elif opcion == "📥 Exportar Datos":
                     )
                     
                     st.success("✅ PDF generado exitosamente")
+                    st.info("ℹ️ El PDF incluye estadísticas y tabla de datos. Las gráficas puedes verlas en la sección 'Visualización'.")
 
 # Footer
 st.sidebar.markdown("---")
